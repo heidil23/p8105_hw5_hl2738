@@ -136,8 +136,9 @@ files_df %>%
   mutate(data = subject_data(file_name)) %>% view()
 ```
 
-
 ## Problem 3
+
+#### Load the iris dataset and introduce missing values
 
 ```{r}
 set.seed(10)
@@ -145,5 +146,32 @@ set.seed(10)
 iris_with_missing = iris %>% 
   map_df(~replace(.x, sample(1:150, 20), NA)) %>%
   mutate(Species = as.character(Species))
+```
+
+Write a function that replaces missing values
+
+```{r}
+missing = function(x){
+  if (is.character(x)) {
+    x[is.na(x)] <- "virginica"
+  }
+  
+  if (!is.character(x)) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+
+  }
+  
+  return(x)
+}
+
+missing(iris_with_missing$Sepal.Length)
+
+iris_with_missing %>%
+  mutate(Sepal.Length = map(Sepal.Length, missing),
+         Sepal.Width = map(Sepal.Width, missing),
+         Petal.Length = map(Petal.Length, missing),
+         Petal.Width = map(Petal.Width, missing),
+         Species = map(Species, missing)) %>%  view()
+
 ```
 
