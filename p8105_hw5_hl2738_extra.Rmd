@@ -29,29 +29,32 @@ scale_fill_discrete = scale_fill_viridis_d
 ## Problem 1
 
 #### Import the data
-First we will import and clean the homicides dataset. We will replace blank cells and those marked "Unknown" with "NA." We will create a new city_state variable and a variable indicating whether the homicide was solved or unsolved, labeled "resolution." Finally, we will eliminate the "Tulsa, AL" location since this is clearly an error, as Tulsa is in OK.
+First we will import the data from the GitHub repository.
 
 ```{r}
 urlfile="https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
 
+homicides <- read_csv(url(urlfile), na = c("", "Unknown")) 
+```
+
+#### In class coding
+```{r}
 homicides_df = read_csv(url(urlfile), na = c("", "Unknown")) %>%
-  mutate(city_state = paste(city, state, sep = ", "),
+  mutate(city_state = str_c(city, state),
                      resolution = case_when(
                        disposition == "Closed without arrest" ~ "unsolved",
                        disposition == "Open/No arrest" ~ "unsolved",
                        disposition == "Closed by arrest" ~ "solved")) %>% 
   relocate(city_state) %>% 
-  filter(city_state != "Tulsa, AL")
+  filter(city_state != "TulsaAL")
 ```
 
-#### Baltimore, MD
-
-Next, we will use prop.test to estimate the proportion of homicides that are unsolved.
+Let's focus on Baltimore
 
 ```{r}
 baltimore_df =
   homicides_df %>% 
-  filter(city_state == "Baltimore, MD")
+  filter(city_state == "BaltimoreMD")
 
 baltimore_summary = baltimore_df %>% 
   summarize(
@@ -65,13 +68,12 @@ baltimore_test =
   n = baltimore_summary %>% pull(n))
 
 baltimore_test %>% 
-  broom::tidy() %>% 
-  knitr::kable()
+  broom::tidy()
 ```
 
-#### All cities
-Next we will run prop.test across all cities. First we will write a function to summarize the data for each city and then run prop.test.
+Let's try to iterate across cities!
 
+First, write a function and test it on a few sample cities
 ```{r}
 prop_test_function = function(df) {
   
@@ -90,9 +92,15 @@ prop_test_function = function(df) {
   return(city_test)
   
 }
+  
+prop_test_function(baltimore_df)
+
+homicides_df %>% 
+  filter(city_state == "AlbuquerqueNM") %>% 
+  prop_test_function()
 ```
 
-Next we will use the map function to iterate across cities.
+Now, let's iterate across all cities
 
 ```{r}
 results_df = homicides_df %>% 
@@ -105,10 +113,12 @@ results_df = homicides_df %>%
   unnest(tidy_results) %>% 
   select(city_state, estimate, starts_with("conf"))
 
-results_df %>% knitr::kable()
+nested_df %>% 
+  filter(city_state == "BaltimoreMD") %>% 
+  pull(tidy_results)
 ```
 
-Finally, we will create a plot showing the estimates and confidence intervals for each city.
+Try to make a plot showing estimates and CIs.
 
 ```{r}
 results_df %>% 
@@ -116,11 +126,56 @@ results_df %>%
   ggplot(aes(x = city_state, y = estimate)) + 
   geom_point() +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-  labs(
-    title = "Estimated proportion of unsolved homicides by city",
-    x = "City",
-    y = "Estimate")
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r}
+homicides_df %>% 
+  group_by(city_state) %>% 
+  summarize(
+    unsolved = sum(resolution == "unsolved"),
+    n = n()
+  ) %>% 
+  mutate(test_results = map2(unsolved, n, prop.test),
+         tidy_results = map(test_results, broom::tidy)) %>% 
+  select(city_state, tidy_results) %>% 
+  unnest(tidy_results) %>% 
+  select(city_state, estimate, starts_with("conf"))
+```
+
+
+#### Description of the data
+
+Create a city_state variable (e.g. "Baltimore, MD") and then summarize within cities to obtain the total number of homicides and the number of unsolved homicides.
+
+Victim age is read in as a character variable, due to "unknown" variables
+
+```{r}
+homicides_city = homicides %>% 
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    unsolved = ifelse(disposition == "Closed without arrest" | disposition == "Open/No arrest", 1, 0)
+    ) %>%
+  group_by(city_state) %>%
+  mutate(
+    number_murders = n(),
+    number_unsolved = sum(unsolved)) %>% 
+  select(city_state, number_murders, number_unsolved) %>%   unique()
+```
+
+Run prop.test for Baltimore, MD
+
+```{r}
+homicides_city %>% 
+  filter(city_state == "Baltimore, MD")
+```
+
+Run prop.test for each of the cities in the dataset and extract proportion of unsolved homicides and confidence interval.
+
+```{r}
+homicides_nested = homicides_city %>% 
+  nest(data = number_murders:number_unsolved)
+
 ```
 
 ## Problem 2
